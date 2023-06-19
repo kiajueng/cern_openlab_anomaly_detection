@@ -19,6 +19,7 @@ sed -i -e "/$pattern.*/s/://" tmp.csv # Deletes unnecessary : of each module it 
 mapfile -t lines < <(grep -n "$pattern.*" "tmp.csv" | cut -d: -f1) #Finds all lines with matching pattern
 
 last_line_number=$(wc -l < "tmp.csv") #append last line of file --> array has one value too much so only need to loop over len(array - 1)
+last_line_number=$((last_line_number+1)) #Increment by one so last line is included 
 lines+=("$last_line_number")
 
 array_length=(${#lines[@]})
