@@ -24,14 +24,20 @@ lines+=("$last_line_number")
 
 array_length=(${#lines[@]})
 
+if [[ ! -d "${BASE_DIR}/Data" ]]; then
+    mkdir "${BASE_DIR}/Data"
+fi
+
 for ((i=0; i<$(($array_length - 1)); i+=1)); do
     matched_line="${lines[$i]}"
     next_line="${lines[$((i+1))]}"
 
     file_name="$(echo $(sed -n "${matched_line}p" tmp.csv) | sed 's/[./]/_/g').csv"  #Get line i and replace every "." and "/" with                                                                       
     # Do something with each matched line and the line that comes after it                    
-    awk -v start="$matched_line" -v end="$next_line" 'NR>=start && NR<end' "tmp.csv" > "$file_name" #Save everything between two linenumbers in new file, excluding second line number 
-    sed -i '1s/^/Date_Time,/' "$file_name"
-    sed -i 's/    \[//g' "$file_name"
-    sed -i 's/\] /,/g' "$file_name"
+    awk -v start="$matched_line" -v end="$next_line" 'NR>=start && NR<end' "tmp.csv" > "${BASE_DIR}/Data/${file_name}" #Save everything between two linenumbers in new file, excluding second line number 
+    sed -i '1s/^/Date_Time,/' "${BASE_DIR}/Data/${file_name}"
+    sed -i 's/    \[//g' "${BASE_DIR}/Data/${file_name}"
+    sed -i 's/\] /,/g' "${BASE_DIR}/Data/${file_name}"
 done
+
+rm tmp.csv
