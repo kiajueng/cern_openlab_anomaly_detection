@@ -21,8 +21,8 @@ class preprocessor_pbeast:
         return dfs
     
     def __month_to_numeric(self,dfs):
-        month_dict = {"Jan":"01", "Feb":"02", "Mar":"03", "Apr":"04", "May":"05", "June":"06", 
-             "July":"07", "Aug":"08", "Sep":"09", "Oct":"10", "Nov":"11", "Dec":"12"}     
+        month_dict = {"Jan":"01", "Feb":"02", "Mar":"03", "Apr":"04", "May":"05", "Jun":"06", 
+             "Jul":"07", "Aug":"08", "Sep":"09", "Oct":"10", "Nov":"11", "Dec":"12"}     
         for df in dfs:
             df["Date_Time"].replace(month_dict,regex=True, inplace = True)
 
