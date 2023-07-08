@@ -2,12 +2,27 @@ import numpy as np
 import pandas as pd
 import glob
 import os
+import argparse
+import calendar
+
+parser = argparse.ArgumentParser() 
+parser.add_argument('-sd', '--start_day', type = int, required=True)
+parser.add_argument('-sm', '--start_month', type = int, required=True)
+parser.add_argument('-sy', '--start_year', type = int, required=True)
+parser.add_argument('-ed', '--end_day', type = int, required=True)
+parser.add_argument('-em', '--end_month', type = int, required=True)
+parser.add_argument('-ey', '--end_year', type = int, required=True)
+parser.add_argument('-p', '--patterns', required=True, help='Pattern to load from files')
+parser.add_argument('-ms', '--max_smooth', action = 'append', help='Max_smooth variables')
+args = parser.parse_args()
 
 class preprocessor_pbeast:
 
-    def __init__(self,dfs=[],path="",max_smooth=[],interval_freq="6S",smooth_freq = "6S",how_interpolate="linear"):
-        self.dfs = dfs
-        self.path = os.environ.get("BASE_DIR") if (path == "") else path
+    def __init__(self, day, month, year, patterns=[],max_smooth=[],interval_freq="6S",smooth_freq = "6S",how_interpolate="linear"):
+        self.patterns = patterns
+        self.day = day
+        self.month = month
+        self.year = year
         self.max_smooth = max_smooth
         self.interval_freq = interval_freq
         self.smooth_freq = "6S"
@@ -16,8 +31,9 @@ class preprocessor_pbeast:
     
     def __read_csv(self):
         dfs = []
-        for files in glob.glob(self.path + "/*.csv"):
-            dfs.append(pd.read_csv(files, delimiter=","))
+        for pattern in self.patterns:
+            for files in glob.glob(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/{pattern}"):
+                dfs.append(pd.read_csv(files, delimiter=","))
         return dfs
     
     def __month_to_numeric(self,dfs):
@@ -69,10 +85,8 @@ class preprocessor_pbeast:
         return interpolated
     
     def __transform(self):
-        initial_dfs = self.dfs if self.dfs else self.__read_csv()
-        if type(initial_dfs) != list:
-            raise TypeError("The initial dataframes are not in a list!")
-            
+        initial_dfs = self.__read_csv()
+        
         if initial_dfs:
             self.__month_to_numeric(initial_dfs)
             self.__interval_to_points(initial_dfs)
@@ -83,4 +97,19 @@ class preprocessor_pbeast:
         else:
             joined_dfs = pd.DataFrame()
         return joined_dfs
-        
+
+
+month_dict = {1:"Jan", 2:"Feb", 3:"Mar", 4:"Apr", 5:"May", 6:"Jun", 7:"Jul", 8:"Aug", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dez"}
+while(args.start_year <= args.end_year):
+    while(args.start_month <= 12):
+        while(args.start_day <= calendar.monthrange(args.start_year, args.start_month)[1]):
+            if (args.start_year == args.end_year and args.start_month == args.start_month and args.start_day > args.end_day):
+                break
+            print(glob.glob(f"{os.environ.get('BASE_DIR')}/Data/{args.start_year}/{month_dict[args.start_month]}/{args.start_day}/RunParams*"))
+            #preprocessor_pbeast(day=args.start_day, month=args.start_month, year=args.start_year, patterns=args.patterns, max_smooth=args.max_smooth).data.head(4)
+            args.start_day += 1
+        args.start_month += 1
+        if (args.start_year == args.end_year and args.start_month > args.end_month):
+            break
+    args.start_year += 1
+    args.start_month = 1
