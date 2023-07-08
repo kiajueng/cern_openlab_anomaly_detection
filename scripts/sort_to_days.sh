@@ -10,6 +10,7 @@ end_month=$7
 start_day=$8
 end_day=$9
 regex=${10}
+pattern="$(cut -d'.' -f1 <<<"$regex")"
 
 month=(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dez)
 
@@ -23,7 +24,7 @@ while [ "$start_year" -ne "$end_year" ] || [ "$start_month" -le "$end_month" ]; 
     month_days=$(cal $(date +"${start_month} ${start_year}") | awk 'NF {DAYS = $NF}; END {print DAYS}')
 
     while [ "$start_day" -le "$month_days" ]; do
-	source $BASE_DIR/scripts/data_to_csv.sh "$partition" "$class" "$attribute" "$start_year" "${month[$((start_month-1))]}" "$start_day" "$regex"
+	source $BASE_DIR/scripts/data_to_csv.sh "$partition" "$class" "$attribute" "$start_year" "${month[$((start_month-1))]}" "$start_day" "$pattern"
 	start_day=$((start_day+1))
 	if [ "$start_year" -eq "$end_year" ] && [ "$start_month" -eq "$end_month" ] && [ "$start_day" -gt "$end_day" ]; then
 	    exit 0
