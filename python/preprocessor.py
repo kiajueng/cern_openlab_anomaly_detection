@@ -127,12 +127,13 @@ while(args.start_year <= args.end_year):
                                                                       year=args.start_year,
                                                                       patterns=args.patterns,
                                                                        max_smooth=args.max_smooth).data],
-                                     ignore_index=True)
-            print(cleaned_data)
-            #cleaned_data.to_hdf(f'{os.environ.get("BASE_DIR")}/Cleaned_Data.h5', key='Cleaned_Data', mode='w')  
+                                     ignore_index=True)  
             args.start_day += 1
         args.start_month += 1
         if (args.start_year == args.end_year and args.start_month > args.end_month):
             break
     args.start_year += 1
     args.start_month = 1
+    
+cleaned_data.to_hdf(f'{os.environ.get("BASE_DIR")}/Cleaned_Data.h5', key='Cleaned_Data', mode='w')  
+            
