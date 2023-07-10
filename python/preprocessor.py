@@ -82,11 +82,7 @@ class preprocessor_pbeast:
     def __joiner(self,dfs):
         joined_df=dfs[0]
         for i in range(1,len(dfs)):
-            print(joined_df.dtypes)
-            print(dfs[i].dtypes)
-            joined_df = joined_df.join(dfs[i].copy(), how="outer", on="Date_Time")
-        joined_df.sort_values(by="Date_Time", inplace=True)
-        joined_df.reset_index(inplace=True)
+            joined_df = joined_df.join(dfs[i].copy().set_index('Date_Time'), how="outer", on="Date_Time")
         return joined_df
     
     def __interpolator(self,df,how):
@@ -116,7 +112,8 @@ while(args.start_year <= args.end_year):
         while(args.start_day <= calendar.monthrange(args.start_year, args.start_month)[1]):
             if (args.start_year == args.end_year and args.start_month == args.start_month and args.start_day > args.end_day):
                 break
-            preprocessor_pbeast(day=args.start_day, month=month_dict[args.start_month], year=args.start_year, patterns=args.patterns, max_smooth=args.max_smooth)
+            cleaned_data = preprocessor_pbeast(day=args.start_day, month=month_dict[args.start_month], year=args.start_year, patterns=args.patterns, max_smooth=args.max_smooth).data
+            cleaned_data.to_hdf(f'{os.environ.get("BASE_DIR")}/Cleaned_Data.h5', key='Cleaned_Data', mode='w')  
             args.start_day += 1
         args.start_month += 1
         if (args.start_year == args.end_year and args.start_month > args.end_month):
