@@ -4,6 +4,7 @@ import glob
 import os
 import argparse
 import calendar
+from datetime import datetime,timedelta
 
 parser = argparse.ArgumentParser() 
 parser.add_argument('-sd', '--start_day', type = int, required=True)
@@ -12,7 +13,7 @@ parser.add_argument('-sy', '--start_year', type = int, required=True)
 parser.add_argument('-ed', '--end_day', type = int, required=True)
 parser.add_argument('-em', '--end_month', type = int, required=True)
 parser.add_argument('-ey', '--end_year', type = int, required=True)
-parser.add_argument('-p', '--patterns', required=True, help='Pattern to load from files')
+parser.add_argument('-p', '--patterns', action = 'append', required=True, help='Pattern to load from files')
 parser.add_argument('-ms', '--max_smooth', action = 'append', help='Max_smooth variables')
 args = parser.parse_args()
 
@@ -65,24 +66,34 @@ class preprocessor_pbeast:
     def __smoothing(self,dfs,freq):
         resampled = []
         for i,df in enumerate(dfs):
-            col = list(df.columns)
-            col.remove("Date_Time")
-            if any(element in col for element in self.max_smooth):        # Check if pattern in max_smooth is in col 
-                dfs[i] = df.copy().resample(freq,on="Date_Time")[col].max()
-            else:
-                dfs[i] = df.copy().resample(freq, on="Date_Time")[col].mean()
-
+            col = np.array(df.columns)
+            new_cols = np.delete(col, np.where(col == "Date_Time"))
+            #if self.max_smooth != None:
+            #    for max_pattern in self.max_smooth:
+            #        max_smooth_cols = []
+            #        dfs[i] = df.copy().resample(freq,on="Date_Time")[col].max()
+            start_day = datetime(self.year, 5, self.day)
+            end_day = start_day + timedelta(days=1)
+            dfs[i] = df[(df["Date_Time"] >= start_day) & (df["Date_Time"] < end_day)]
+            dfs[i] = dfs[i].resample(freq, on="Date_Time")[new_cols].mean()
+            dfs[i].reset_index(inplace=True)
+        #return dfs
+        
     def __joiner(self,dfs):
-        joined_df=dfs[0].copy()
+        joined_df=dfs[0]
         for i in range(1,len(dfs)):
+            print(joined_df.dtypes)
+            print(dfs[i].dtypes)
             joined_df = joined_df.join(dfs[i].copy(), how="outer", on="Date_Time")
-        joined_df.reset_index(inplace=True)
         joined_df.sort_values(by="Date_Time", inplace=True)
+        joined_df.reset_index(inplace=True)
         return joined_df
     
     def __interpolator(self,df,how):
-        interpolated = df.interpolate(method=how, limit_direction="both", axis=0)
-        return interpolated
+        col = np.array(df.columns)
+        new_cols = np.delete(col, np.where(col == "Date_Time"))
+        df[new_cols] = df[new_cols].interpolate(method=how, limit_direction="both", axis=0)
+        return df
     
     def __transform(self):
         initial_dfs = self.__read_csv()
@@ -91,7 +102,7 @@ class preprocessor_pbeast:
             self.__month_to_numeric(initial_dfs)
             self.__interval_to_points(initial_dfs)
             self.__smoothing(initial_dfs,self.smooth_freq)
-
+            
             joined_dfs = self.__joiner(initial_dfs)
             joined_dfs = self.__interpolator(joined_dfs,self.how_interpolate)
         else:
@@ -105,8 +116,7 @@ while(args.start_year <= args.end_year):
         while(args.start_day <= calendar.monthrange(args.start_year, args.start_month)[1]):
             if (args.start_year == args.end_year and args.start_month == args.start_month and args.start_day > args.end_day):
                 break
-            print(glob.glob(f"{os.environ.get('BASE_DIR')}/Data/{args.start_year}/{month_dict[args.start_month]}/{args.start_day}/RunParams*"))
-            #preprocessor_pbeast(day=args.start_day, month=args.start_month, year=args.start_year, patterns=args.patterns, max_smooth=args.max_smooth).data.head(4)
+            preprocessor_pbeast(day=args.start_day, month=month_dict[args.start_month], year=args.start_year, patterns=args.patterns, max_smooth=args.max_smooth)
             args.start_day += 1
         args.start_month += 1
         if (args.start_year == args.end_year and args.start_month > args.end_month):
