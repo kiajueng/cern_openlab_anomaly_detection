@@ -88,7 +88,6 @@ class preprocessor_pbeast:
             dfs[i] = df[(df["Date_Time"] >= start_day) & (df["Date_Time"] < end_day)]
             dfs[i] = dfs[i].resample(freq, on="Date_Time")[new_cols].mean()
             dfs[i].reset_index(inplace=True)
-        #return dfs
         
     def __joiner(self,dfs):
         joined_df=dfs[0]
