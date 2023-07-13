@@ -15,6 +15,7 @@ parser.add_argument('-em', '--end_month', type = int, required=True)
 parser.add_argument('-ey', '--end_year', type = int, required=True)
 parser.add_argument('-p', '--patterns', action = 'append', required=True, help='Pattern to load from files')
 parser.add_argument('-ms', '--max_smooth', action = 'append', help='Max_smooth variables')
+parser.add_argument('-s', '--smoothing', type = str, help='smoothing frequency')
 args = parser.parse_args()
 
 def month_numeric_switch(val, option = "to_numeric"):
@@ -30,14 +31,13 @@ def month_numeric_switch(val, option = "to_numeric"):
 
 class preprocessor_pbeast:
 
-    def __init__(self, day, month, year, patterns=[],max_smooth=[],interval_freq="6S",smooth_freq = "6S",how_interpolate="linear"):
+    def __init__(self, day, month, year, patterns=[],max_smooth=[],smooth_freq = "6S",how_interpolate="linear"):
         self.patterns = patterns
         self.day = day
         self.month = month
         self.year = year
         self.max_smooth = max_smooth
-        self.interval_freq = interval_freq
-        self.smooth_freq = "6S"
+        self.smooth_freq = "6S" if smooth_freq is None else smooth_freq
         self.how_interpolate = how_interpolate
         self.data = self.__transform()
     
@@ -65,7 +65,7 @@ class preprocessor_pbeast:
                 start = df.iloc[index]["Date_Time"].split(" - ")[0]
                 end = df.iloc[index]["Date_Time"].split(" - ")[1]
 
-                datetimeindex = pd.date_range(start,end,freq=self.interval_freq,inclusive = "left")
+                datetimeindex = pd.date_range(start,end,freq=self.smooth_freq,inclusive = "left")
                 to_be_appended = pd.DataFrame({df.columns[0]:datetimeindex, 
                                                df.columns[1]:np.ones(len(datetimeindex))*df.iloc[index][df.columns[1]]})
 
@@ -125,6 +125,7 @@ while(args.start_year <= args.end_year):
                                                                       month=month_numeric_switch(args.start_month, option = "to_month"),
                                                                       year=args.start_year,
                                                                       patterns=args.patterns,
+                                                                       smooth_freq=args.smoothing,
                                                                        max_smooth=args.max_smooth).data],
                                      ignore_index=True)  
             args.start_day += 1
