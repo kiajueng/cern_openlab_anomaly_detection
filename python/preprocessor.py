@@ -14,6 +14,7 @@ parser.add_argument('-ed', '--end_day', type = int, required=True)
 parser.add_argument('-em', '--end_month', type = int, required=True)
 parser.add_argument('-ey', '--end_year', type = int, required=True)
 parser.add_argument('-p', '--patterns', action = 'append', required=True, help='Pattern to load from files')
+parser.add_argument('-s', '--smoothing', type = bool, help='data publishing frequency')
 parser.add_argument('-f', '--data_frequency', type = str, help='data publishing frequency', required=True)
 args = parser.parse_args()
 
@@ -30,12 +31,13 @@ def month_numeric_switch(val, option = "to_numeric"):
 
 class preprocessor_pbeast:
 
-    def __init__(self, day, month, year, patterns=[],data_freq="6S",how_interpolate="linear"):
+    def __init__(self, day, month, year, patterns=[],data_freq="6S",how_interpolate="linear",smoothing=False):
         self.patterns = patterns
         self.day = day
         self.month = month
         self.year = year
         self.data_freq = data_freq
+        self.smoothing=smoothing
         self.how_interpolate = how_interpolate
         self.data = self.__transform()
     
@@ -78,11 +80,21 @@ class preprocessor_pbeast:
             start_day = datetime(self.year, month_numeric_switch(self.month, option = "to_numeric"), self.day)
             end_day = start_day + timedelta(days=1)
             dfs[i] = dfs[i][(dfs[i]["Date_Time"] >= start_day) & (dfs[i]["Date_Time"] < end_day)]
+
+    def __smoothing(self,dfs):
+        for i in range(len(dfs)):
+            dfs[i] = dfs[i].resample(self.data_freq, on="Date_Time").mean(numeric_only=True)
+            dfs[i].reset_index(inplace=True)
+            start_day = datetime(self.year, month_numeric_switch(self.month, option = "to_numeric"), self.day)
+            end_day = start_day + timedelta(days=1)
+            dfs[i] = dfs[i][(dfs[i]["Date_Time"] >= start_day) & (dfs[i]["Date_Time"] < end_day)]
         
     def __joiner(self,dfs):
         joined_df=dfs[0]
         for i in range(1,len(dfs)):
             joined_df = joined_df.join(dfs[i].copy().set_index('Date_Time'), how="outer", on="Date_Time")
+        joined_df.sort_values(by="Date_Time", inplace=True)
+        joined_df.reset_index(drop=True,inplace=True)
         return joined_df
     
     def __interpolator(self,df,how):
@@ -97,7 +109,10 @@ class preprocessor_pbeast:
         if initial_dfs:
             self.__month_to_numeric(initial_dfs)
             self.__interval_to_points(initial_dfs)
-            self.__rounding(initial_dfs)
+            if self.smoothing:
+                self.__smoothing(initial_dfs)
+            else:
+                self.__rounding(initial_dfs)
             
             joined_dfs = self.__joiner(initial_dfs)
             joined_dfs = self.__interpolator(joined_dfs,self.how_interpolate)
@@ -115,6 +130,7 @@ while(args.start_year <= args.end_year):
                                                                       month=month_numeric_switch(args.start_month, option = "to_month"),
                                                                       year=args.start_year,
                                                                       patterns=args.patterns,
+                                                                       smoothing=args.smoothing,
                                                                        data_freq=args.data_frequency).data],
                                      ignore_index=True)  
             args.start_day += 1
