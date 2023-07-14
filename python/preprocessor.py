@@ -14,8 +14,7 @@ parser.add_argument('-ed', '--end_day', type = int, required=True)
 parser.add_argument('-em', '--end_month', type = int, required=True)
 parser.add_argument('-ey', '--end_year', type = int, required=True)
 parser.add_argument('-p', '--patterns', action = 'append', required=True, help='Pattern to load from files')
-parser.add_argument('-ms', '--max_smooth', action = 'append', help='Max_smooth variables')
-parser.add_argument('-s', '--smoothing', type = str, help='smoothing frequency')
+parser.add_argument('-f', '--data_frequency', type = str, help='data publishing frequency', required=True)
 args = parser.parse_args()
 
 def month_numeric_switch(val, option = "to_numeric"):
@@ -31,13 +30,12 @@ def month_numeric_switch(val, option = "to_numeric"):
 
 class preprocessor_pbeast:
 
-    def __init__(self, day, month, year, patterns=[],max_smooth=[],smooth_freq = "6S",how_interpolate="linear"):
+    def __init__(self, day, month, year, patterns=[],data_freq="6S",how_interpolate="linear"):
         self.patterns = patterns
         self.day = day
         self.month = month
         self.year = year
-        self.max_smooth = max_smooth
-        self.smooth_freq = "6S" if smooth_freq is None else smooth_freq
+        self.data_freq = data_freq
         self.how_interpolate = how_interpolate
         self.data = self.__transform()
     
@@ -65,7 +63,7 @@ class preprocessor_pbeast:
                 start = df.iloc[index]["Date_Time"].split(" - ")[0]
                 end = df.iloc[index]["Date_Time"].split(" - ")[1]
 
-                datetimeindex = pd.date_range(start,end,freq=self.smooth_freq,inclusive = "left")
+                datetimeindex = pd.date_range(start,end,freq=self.data_freq,inclusive = "left")
                 to_be_appended = pd.DataFrame({df.columns[0]:datetimeindex, 
                                                df.columns[1]:np.ones(len(datetimeindex))*df.iloc[index][df.columns[1]]})
 
@@ -74,20 +72,12 @@ class preprocessor_pbeast:
             df[df.columns[0]]= pd.to_datetime(df[df.columns[0]]) #Cast to datetime object
             dfs[i] = df
     
-    def __smoothing(self,dfs,freq):
-        resampled = []
-        for i,df in enumerate(dfs):
-            col = np.array(df.columns)
-            new_cols = np.delete(col, np.where(col == "Date_Time"))
-            #if self.max_smooth != None:
-            #    for max_pattern in self.max_smooth:
-            #        max_smooth_cols = []
-            #        dfs[i] = df.copy().resample(freq,on="Date_Time")[col].max()            
+    def __rounding(self,dfs):
+        for i in range(len(dfs)):
+            dfs[i]["Date_Time"] = dfs[i]["Date_Time"].dt.round("S")
             start_day = datetime(self.year, month_numeric_switch(self.month, option = "to_numeric"), self.day)
             end_day = start_day + timedelta(days=1)
-            dfs[i] = df[(df["Date_Time"] >= start_day) & (df["Date_Time"] < end_day)]
-            dfs[i] = dfs[i].resample(freq, on="Date_Time")[new_cols].mean()
-            dfs[i].reset_index(inplace=True)
+            dfs[i] = dfs[i][(dfs[i]["Date_Time"] >= start_day) & (dfs[i]["Date_Time"] < end_day)]
         
     def __joiner(self,dfs):
         joined_df=dfs[0]
@@ -107,7 +97,7 @@ class preprocessor_pbeast:
         if initial_dfs:
             self.__month_to_numeric(initial_dfs)
             self.__interval_to_points(initial_dfs)
-            self.__smoothing(initial_dfs,self.smooth_freq)
+            self.__rounding(initial_dfs)
             
             joined_dfs = self.__joiner(initial_dfs)
             joined_dfs = self.__interpolator(joined_dfs,self.how_interpolate)
@@ -125,8 +115,7 @@ while(args.start_year <= args.end_year):
                                                                       month=month_numeric_switch(args.start_month, option = "to_month"),
                                                                       year=args.start_year,
                                                                       patterns=args.patterns,
-                                                                       smooth_freq=args.smoothing,
-                                                                       max_smooth=args.max_smooth).data],
+                                                                       data_freq=args.data_frequency).data],
                                      ignore_index=True)  
             args.start_day += 1
         args.start_month += 1
