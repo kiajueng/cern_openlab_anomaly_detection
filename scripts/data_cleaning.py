@@ -32,7 +32,7 @@ with open(f'{base_dir}/tmp.csv') as f:    #Read file line by line
             if(new_f != None):
                 new_f.close()
                 data = pd.read_csv(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.csv',delimiter=",")
-                data.to_hdf(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.h5', key="{filename}", mode="w")
+                data.to_hdf(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.h5', key=f"{filename}", mode="w")
                 
             line = line.replace(":","")
             filename = to_filename(line)
@@ -45,5 +45,5 @@ with open(f'{base_dir}/tmp.csv') as f:    #Read file line by line
 
 new_f.close()
 data = pd.read_csv(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.csv',delimiter=",")
-data.to_hdf(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.h5', key="{filename}", mode="w")
+data.to_hdf(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.h5', key=f"{filename}", mode="w")
                 

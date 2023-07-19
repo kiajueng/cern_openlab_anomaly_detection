@@ -24,3 +24,6 @@ fi
 export BASE_DIR="$(cd -P "$(dirname "${_src}")" && pwd)"
 
 echo "The BASE_DIR is set to $BASE_DIR"
+
+setupATLAS
+source /cvmfs/sft.cern.ch/lcg/views/LCG_102b_nxcals_pro/x86_64-centos7-gcc11-opt/setup.sh
