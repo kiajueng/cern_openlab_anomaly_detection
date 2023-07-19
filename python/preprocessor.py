@@ -14,7 +14,6 @@ parser.add_argument('-ed', '--end_day', type = int, required=True)
 parser.add_argument('-em', '--end_month', type = int, required=True)
 parser.add_argument('-ey', '--end_year', type = int, required=True)
 parser.add_argument('-p', '--patterns', action = 'append', required=True, help='Pattern to load from files')
-parser.add_argument('-s', '--smoothing', type = bool, help='data publishing frequency')
 parser.add_argument('-f', '--data_frequency', type = str, help='data publishing frequency', required=True)
 args = parser.parse_args()
 
@@ -31,16 +30,15 @@ def month_numeric_switch(val, option = "to_numeric"):
 
 class preprocessor_pbeast:
 
-    def __init__(self, day, month, year, patterns=[],data_freq="6S",how_interpolate="linear",smoothing=False):
+    def __init__(self, day, month, year, patterns=[],data_freq="6S",how_interpolate="linear"):
         self.patterns = patterns
         self.day = day
         self.month = month
         self.year = year
         self.data_freq = data_freq
-        self.smoothing=smoothing
         self.how_interpolate = how_interpolate
-        self.data = self.__transform()
-    
+        self.__run()
+
     def __read_csv(self):
         dfs = []
         for pattern in self.patterns:
@@ -48,77 +46,65 @@ class preprocessor_pbeast:
                 dfs.append(pd.read_csv(files, delimiter=","))
         return dfs
     
-    def __month_to_numeric(self,dfs):
-        month_dict = {"Jan":"01", "Feb":"02", "Mar":"03", "Apr":"04", "May":"05", "Jun":"06", 
-             "Jul":"07", "Aug":"08", "Sep":"09", "Oct":"10", "Nov":"11", "Dec":"12"}     
-        for df in dfs:
-            df["Date_Time"].replace(month_dict,regex=True, inplace = True)
-
-    
     def __interval_to_points(self,dfs):
         for i,df in enumerate(dfs):
+            df.loc[~df["Date_Time"].str.contains(" - "), "Date_Time"] = pd.to_datetime(df.loc[~df["Date_Time"].str.contains(" - "),"Date_Time"], format='%Y-%B-%d %H:%M:%S.%f').astype(str)
             from_to_rows = df.loc[df['Date_Time'].str.contains(" - ")].index     #Find rows where datetime is given as interval
             for index in reversed(from_to_rows):     #Reverse so index does not change
                 tmp_start = df.iloc[:index].copy()
                 tmp_end = df.iloc[index+1:].copy()
 
-                start = df.iloc[index]["Date_Time"].split(" - ")[0]
-                end = df.iloc[index]["Date_Time"].split(" - ")[1]
+                start = pd.to_datetime(df.iloc[index]["Date_Time"].split(" - ")[0], format='%Y-%B-%d %H:%M:%S.%f')
+                end = pd.to_datetime(df.iloc[index]["Date_Time"].split(" - ")[1], format='%Y-%B-%d %H:%M:%S.%f')
 
                 datetimeindex = pd.date_range(start,end,freq=self.data_freq,inclusive = "left")
                 to_be_appended = pd.DataFrame({df.columns[0]:datetimeindex, 
                                                df.columns[1]:np.ones(len(datetimeindex))*df.iloc[index][df.columns[1]]})
 
                 df = pd.concat([tmp_start,to_be_appended,tmp_end], ignore_index = True)
-
-            df[df.columns[0]]= pd.to_datetime(df[df.columns[0]]) #Cast to datetime object
+            df["Date_Time"] = pd.to_datetime(df["Date_Time"])
             dfs[i] = df
     
-    def __rounding(self,dfs):
-        for i in range(len(dfs)):
-            dfs[i]["Date_Time"] = dfs[i]["Date_Time"].dt.round("S")
+    def __rounding(self,df):
+            df["Date_Time"] = df["Date_Time"].dt.round("S")
             start_day = datetime(self.year, month_numeric_switch(self.month, option = "to_numeric"), self.day)
             end_day = start_day + timedelta(days=1)
-            dfs[i] = dfs[i][(dfs[i]["Date_Time"] >= start_day) & (dfs[i]["Date_Time"] < end_day)]
+            df = df[(df["Date_Time"] >= start_day) & (df["Date_Time"] < end_day)]
 
-    def __smoothing(self,dfs):
+    def __save(self,df):
+        name = df.columns[1].replace(".","_").replace("/","_")
+        df.to_hdf(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}/{self.day}/{name}.h5", key=f"{name}", mode="w")
+
+    def __smooth_save(self,dfs):
         for i in range(len(dfs)):
-            dfs[i] = dfs[i].resample(self.data_freq, on="Date_Time").mean(numeric_only=True)
+            self.__rounding(dfs[i])
+            dfs[i] = dfs[i].set_index("Date_Time").resample(self.data_freq).ffill()
             dfs[i].reset_index(inplace=True)
+            
             start_day = datetime(self.year, month_numeric_switch(self.month, option = "to_numeric"), self.day)
             end_day = start_day + timedelta(days=1)
-            dfs[i] = dfs[i][(dfs[i]["Date_Time"] >= start_day) & (dfs[i]["Date_Time"] < end_day)]
-        
-    def __joiner(self,dfs):
-        joined_df=dfs[0]
-        for i in range(1,len(dfs)):
-            joined_df = joined_df.join(dfs[i].copy().set_index('Date_Time'), how="outer", on="Date_Time")
-        joined_df.sort_values(by="Date_Time", inplace=True)
-        joined_df.reset_index(drop=True,inplace=True)
-        return joined_df
-    
-    def __interpolator(self,df,how):
-        col = np.array(df.columns)
-        new_cols = np.delete(col, np.where(col == "Date_Time"))
-        df[new_cols] = df[new_cols].interpolate(method=how, limit_direction="both", axis=0)
-        return df
-    
-    def __transform(self):
-        initial_dfs = self.__read_csv()
-        
-        if initial_dfs:
-            self.__month_to_numeric(initial_dfs)
-            self.__interval_to_points(initial_dfs)
-            if self.smoothing:
-                self.__smoothing(initial_dfs)
-            else:
-                self.__rounding(initial_dfs)
+            dfs[i] = dfs[i][(dfs[i]["Date_Time"] >= start_day) & (dfs[i]["Date_Time"] < end_day)] #Delete all rows whose day is != the given day
+            self.__save(dfs[i])
             
-            joined_dfs = self.__joiner(initial_dfs)
-            joined_dfs = self.__interpolator(joined_dfs,self.how_interpolate)
-        else:
-            joined_dfs = pd.DataFrame()
-        return joined_dfs
+    def __run(self):
+        initial_dfs = self.__read_csv()
+
+        if not os.path.isdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data"):
+            os.mkdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data")
+
+        if not os.path.isdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}"):
+            os.mkdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}")
+
+        if not os.path.isdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}"):
+            os.mkdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}")
+
+        if not os.path.isdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}/{self.day}"):
+            os.mkdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}/{self.day}")
+
+        if initial_dfs:
+            self.__interval_to_points(initial_dfs)
+            self.__smooth_save(initial_dfs)
+        return initial_dfs
 
 cleaned_data = pd.DataFrame()
 while(args.start_year <= args.end_year):
@@ -126,13 +112,11 @@ while(args.start_year <= args.end_year):
         while(args.start_day <= calendar.monthrange(args.start_year, args.start_month)[1]):
             if (args.start_year == args.end_year and args.start_month == args.start_month and args.start_day > args.end_day):
                 break
-            cleaned_data = pd.concat([cleaned_data,preprocessor_pbeast(day=args.start_day,
-                                                                      month=month_numeric_switch(args.start_month, option = "to_month"),
-                                                                      year=args.start_year,
-                                                                      patterns=args.patterns,
-                                                                       smoothing=args.smoothing,
-                                                                       data_freq=args.data_frequency).data],
-                                     ignore_index=True)  
+            preprocessor_pbeast(day=args.start_day,
+                                month=month_numeric_switch(args.start_month, option = "to_month"),
+                                year=args.start_year,
+                                patterns=args.patterns,
+                                data_freq=args.data_frequency)  
             args.start_day += 1
         args.start_month += 1
         if (args.start_year == args.end_year and args.start_month > args.end_month):
@@ -140,5 +124,4 @@ while(args.start_year <= args.end_year):
     args.start_year += 1
     args.start_month = 1
     
-cleaned_data.to_hdf(f'{os.environ.get("BASE_DIR")}/Cleaned_Data.h5', key='Cleaned_Data', mode='w')  
             

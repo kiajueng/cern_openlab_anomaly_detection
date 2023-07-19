@@ -1,5 +1,6 @@
 import os
 import argparse
+import pandas as pd
 
 def to_filename(line):
     new_line = line.replace('.', '_')
@@ -22,13 +23,16 @@ base_dir = os.environ.get('BASE_DIR')    #Get the Base dir set by the setup scri
 
 
 new_f = None    #Initialise new_f -> file to write in
+filename = None #initialise filename
+
 with open(f'{base_dir}/tmp.csv') as f:    #Read file line by line
     for line in f:
         if (args.pattern in line):
 
             if(new_f != None):
                 new_f.close()
-            
+                pd.to_hdf(pd.read_csv(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.csv'), key="{filename}", mode="w")
+                
             line = line.replace(":","")
             filename = to_filename(line)
             new_f = open(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.csv', 'a')    #Create new file if pattern found --> New module
@@ -39,4 +43,5 @@ with open(f'{base_dir}/tmp.csv') as f:    #Read file line by line
             new_f.write(cleaned_line)
 
 new_f.close()
-            
+pd.to_hdf(pd.read_csv(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.csv'), key="{filename}", mode="w")
+                
