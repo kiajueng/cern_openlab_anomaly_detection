@@ -50,8 +50,10 @@ class preprocessor_pbeast:
     def __resample(self,df,freq):
         #Treat the intervals
         df_new = df.copy()
-        last_interval_idx = df.loc[df['Date_Time'].str.contains(" - ")].index[-1]
-        last_idx = df.index[-1]
+
+        if len(df.loc[df['Date_Time'].str.contains(" - ")].index) > 0: 
+            last_interval_idx = df.loc[df['Date_Time'].str.contains(" - ")].index[-1]
+            last_idx = df.index[-1]
         if last_interval_idx == last_idx:
             interval = df.iloc[[last_interval_idx]].copy().rename(index={last_interval_idx:(last_interval_idx +1)})
             interval["Date_Time"] = interval["Date_Time"].str.split(" - ").str[1]
@@ -127,6 +129,7 @@ class preprocessor_pbeast:
         columns = columns[columns != "Date_Time"]    #Remove DateTime column
         for column in columns:
             self.__save(joined_df,column)
+        self.__save(L1,L1.columns[1])
 
 cleaned_data = pd.DataFrame()
 while(args.start_year <= args.end_year):
