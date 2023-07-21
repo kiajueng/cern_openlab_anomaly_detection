@@ -30,65 +30,77 @@ def month_numeric_switch(val, option = "to_numeric"):
 
 class preprocessor_pbeast:
 
-    def __init__(self, day, month, year, patterns=[],data_freq="6S",how_interpolate="linear"):
+    def __init__(self, day, month, year, patterns=[],data_freq="6S"):
         self.patterns = patterns
         self.day = day
         self.month = month
         self.year = year
         self.data_freq = data_freq
-        self.how_interpolate = how_interpolate
         self.__run()
 
     def __read_csv(self):
         dfs = []
         for pattern in self.patterns:
             for files in glob.glob(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/{pattern}"):
-                dfs.append(pd.read_csv(files, delimiter=","))
-        return dfs
+                dfs.append(pd.read_hdf(files))
+        L1 = pd.read_hdf(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/DF_HLTSV_Events.h5")
+        return L1,dfs
+
+
+    def __resample(self,df,freq):
+        #Treat the intervals
+        df_new = df.copy()
+        last_interval_idx = df.loc[df['Date_Time'].str.contains(" - ")].index[-1]
+        last_idx = df.index[-1]
+        if last_interval_idx == last_idx:
+            interval = df.iloc[[last_interval_idx]].copy().rename(index={last_interval_idx:(last_interval_idx +1)})
+            interval["Date_Time"] = interval["Date_Time"].str.split(" - ").str[1]
+            df_new = pd.concat([df,interval])
+        df_new['Date_Time'] = df_new['Date_Time'].str.split(' - ').str[0]
+        df_new['Date_Time'] = pd.to_datetime(df_new['Date_Time'], format='%Y-%B-%d %H:%M:%S.%f').dt.round('1s')                                                                                          
+        # first resampling to fill periods with " - " with actual values                                                                                                                         
+        df_new = df_new.set_index('Date_Time')                                                                                                                                                           
+        df_new = df_new.resample(freq).mean(numeric_only=True)
+        df_new = df_new.ffill()
+        df_new.reset_index(inplace=True)
+        return df_new
     
-    def __interval_to_points(self,dfs):
-        for i,df in enumerate(dfs):
-            df.loc[~df["Date_Time"].str.contains(" - "), "Date_Time"] = pd.to_datetime(df.loc[~df["Date_Time"].str.contains(" - "),"Date_Time"], format='%Y-%B-%d %H:%M:%S.%f').astype(str)
-            from_to_rows = df.loc[df['Date_Time'].str.contains(" - ")].index     #Find rows where datetime is given as interval
-            for index in reversed(from_to_rows):     #Reverse so index does not change
-                tmp_start = df.iloc[:index].copy()
-                tmp_end = df.iloc[index+1:].copy()
-
-                start = pd.to_datetime(df.iloc[index]["Date_Time"].split(" - ")[0], format='%Y-%B-%d %H:%M:%S.%f')
-                end = pd.to_datetime(df.iloc[index]["Date_Time"].split(" - ")[1], format='%Y-%B-%d %H:%M:%S.%f')
-
-                datetimeindex = pd.date_range(start,end,freq=self.data_freq,inclusive = "left")
-                to_be_appended = pd.DataFrame({df.columns[0]:datetimeindex, 
-                                               df.columns[1]:np.ones(len(datetimeindex))*df.iloc[index][df.columns[1]]})
-
-                df = pd.concat([tmp_start,to_be_appended,tmp_end], ignore_index = True)
-            df["Date_Time"] = pd.to_datetime(df["Date_Time"])
-            dfs[i] = df
-    
-    def __rounding(self,df):
-            df["Date_Time"] = df["Date_Time"].dt.round("S")
-            start_day = datetime(self.year, month_numeric_switch(self.month, option = "to_numeric"), self.day)
-            end_day = start_day + timedelta(days=1)
-            df = df[(df["Date_Time"] >= start_day) & (df["Date_Time"] < end_day)]
-
-    def __save(self,df):
-        name = df.columns[1].replace(".","_").replace("/","_")
-        df.to_hdf(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}/{self.day}/{name}.h5", key=f"{name}", mode="w")
-
-    def __smooth_save(self,dfs):
+    def __join(self,dfs):
         for i in range(len(dfs)):
-            self.__rounding(dfs[i])
-            dfs[i] = dfs[i].set_index("Date_Time").resample(self.data_freq).ffill()
-            dfs[i].reset_index(inplace=True)
-            
-            start_day = datetime(self.year, month_numeric_switch(self.month, option = "to_numeric"), self.day)
-            end_day = start_day + timedelta(days=1)
-            dfs[i] = dfs[i][(dfs[i]["Date_Time"] >= start_day) & (dfs[i]["Date_Time"] < end_day)] #Delete all rows whose day is != the given day
-            self.__save(dfs[i])
+            dfs[i]=dfs[i].set_index("Date_Time")
+        joined_df = pd.concat(dfs,axis=1,join="outer").sort_index().reset_index()
+        return joined_df
+        
+    def __drop_L1(self,df,L1):
+
+        # which events to remove                                                                                                                                                                 
+        condition = L1['DF.HLTSV.Events'] <= 100                                                                                                                                                 
+        drop_times = L1.loc[condition, "Date_Time"]
+
+        # remove given points in time                                                                                                                                                            
+        rows_to_remove_indices = []                                                                                                                                                              
+        for given_timestamp in drop_times:                                                                                                                                                          
+            matching_rows = df.loc[(df['Date_Time'] >= given_timestamp - pd.Timedelta(seconds=10)) &                                                                                           
+                                    (df['Date_Time'] <= given_timestamp + pd.Timedelta(seconds=10))]                                                                                         
+            rows_to_remove_indices.extend(matching_rows.index)                                                                                                                                   
+        df = df.drop(rows_to_remove_indices)
+
+        # Fill gaps in occupancy df -> should be ~14400 elements afterwards                                                                                                                      
+        df = df.set_index('Date_Time')                                                                                                                                                         
+        df = df.resample(self.data_freq).ffill()                                                                                                                                                         
+        df = df.rename_axis('Date_Time').reset_index()
+        start_day = datetime(self.year, month_numeric_switch(self.month, option = "to_numeric"), self.day)
+        end_day = start_day + timedelta(days=1)
+        df = df[(df["Date_Time"] >= start_day) & (df["Date_Time"] < end_day)].reset_index(drop=True)
+        return df
+
+    def __save(self,data,column):
+        name = column.replace(".","_").replace("/","_")
+        data[["Date_Time",column]].to_hdf(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}/{self.day}/{name}.h5", key=f"{name}", mode="w")
             
     def __run(self):
-        initial_dfs = self.__read_csv()
-
+        L1,dfs = self.__read_csv()
+        
         if not os.path.isdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data"):
             os.mkdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data")
 
@@ -101,10 +113,20 @@ class preprocessor_pbeast:
         if not os.path.isdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}/{self.day}"):
             os.mkdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}/{self.day}")
 
-        if initial_dfs:
-            self.__interval_to_points(initial_dfs)
-            self.__smooth_save(initial_dfs)
-        return initial_dfs
+        #First resample the data
+        L1 = self.__resample(L1,"5S")
+        for i in range(len(dfs)):
+            dfs[i] = self.__resample(dfs[i],self.data_freq)
+
+        #Join the dfs and drop where L1 <= 100
+        joined_df = self.__join(dfs)
+        joined_df = self.__drop_L1(joined_df,L1)
+
+        #Save the cleaned data
+        columns = joined_df.columns
+        columns = columns[columns != "Date_Time"]    #Remove DateTime column
+        for column in columns:
+            self.__save(joined_df,column)
 
 cleaned_data = pd.DataFrame()
 while(args.start_year <= args.end_year):
