@@ -62,8 +62,7 @@ class preprocessor_pbeast:
         df_new['Date_Time'] = pd.to_datetime(df_new['Date_Time'], format='%Y-%B-%d %H:%M:%S.%f').dt.round('1s')                                                                                          
         # first resampling to fill periods with " - " with actual values                                                                                                                         
         df_new = df_new.set_index('Date_Time')                                                                                                                                                           
-        df_new = df_new.resample(freq).mean(numeric_only=True)
-        df_new = df_new.ffill()
+        df_new = df_new.resample(freq).ffill().bfill()
         df_new.reset_index(inplace=True)
         return df_new
     
@@ -121,7 +120,10 @@ class preprocessor_pbeast:
             dfs[i] = self.__resample(dfs[i],self.data_freq)
 
         #Join the dfs and drop where L1 <= 100
-        joined_df = self.__join(dfs)
+        if len(dfs) > 1:
+            joined_df = self.__join(dfs)
+        else:
+            joined_df = dfs[0]
         joined_df = self.__drop_L1(joined_df,L1)
 
         #Save the cleaned data
