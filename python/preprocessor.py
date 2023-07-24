@@ -75,7 +75,7 @@ class preprocessor_pbeast:
     def __drop_L1(self,df,L1):
 
         # which events to remove                                                                                                                                                                 
-        condition = L1['DF.HLTSV.Events'] <= 100                                                                                                                                                 
+        condition = L1['DF.HLTSV.Events'] <= 1049                                                                                                                                                 
         drop_times = L1.loc[condition, "Date_Time"]
 
         # remove given points in time                                                                                                                                                            
