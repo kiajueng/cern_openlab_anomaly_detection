@@ -12,7 +12,7 @@ end_day=$9
 regex=${10}
 pattern="$(cut -d'.' -f1 <<<"$regex")"
 
-month=(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dez)
+month=(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec)
 
 if [ "$start_year" -ge "$end_year" ] && [ "$start_month" -gt "$end_month" ]; then
     echo "There has to be at least one month difference if the Year is the same and Start Year <= End Year"

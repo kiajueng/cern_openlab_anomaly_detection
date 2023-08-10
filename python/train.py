@@ -28,10 +28,12 @@ loss = nn.L1Loss()
 print("Learning rate, optimizer and loss initialized")
 
 #Initialize data to dataloader
-data = dh.loader(2023,5,21,2023,5,21,"RunParams_ROD_CRATE_B2_ROD_B2_S7_L0_B07_S1_C7_M6C_FMTOccupancy").data
+data = dh.loader(2023,5,21,2023,5,21,"RunParams*").data
 train_x,train_y,test_x,test_y = dh.TS_window(data,1000,0.8).windows()
 test_dataset = dh.TS_Dataset(test_x,test_y)
 train_dataset = dh.TS_Dataset(train_x,train_y)
+print(test_dataset.__len__())
+print(train_dataset.__len__())
 test_loader = DataLoader(test_dataset,shuffle=False,batch_size=1000)
 train_loader = DataLoader(train_dataset,shuffle=False,batch_size=1000)
 
@@ -40,5 +42,5 @@ print("Dataloader initialized")
 #Initialize the run_training class from run.py
 runner = run.run_training(model,train_loader,test_loader)
 print("Model now running")
-runner.run(epochs=20,loss_fn=loss,lr=lr,optimizer=optimizer,device=device,patience=3,mindelta=1)
+runner.run(epochs=40,loss_fn=loss,lr=lr,optimizer=optimizer,device=device,patience=20,mindelta=0.00005)
 

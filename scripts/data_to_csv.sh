@@ -29,5 +29,4 @@ fi
 
 python3 "${BASE_DIR}/scripts/data_cleaning.py" -d "$days" -m "$month" -y "$year" -p "$pattern"
 
-rm "${BASE_DIR}/Data/${year}/${month}/${days}"/*.csv
 rm "${BASE_DIR}/tmp.csv"
