@@ -33,7 +33,8 @@ with open(f'{base_dir}/tmp.csv') as f:    #Read file line by line
                 new_f.close()
                 data = pd.read_csv(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.csv',delimiter=",")
                 data.to_hdf(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.h5', key=f"{filename}", mode="w")
-                
+                os.remove(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.csv')
+
             line = line.replace(":","")
             filename = to_filename(line)
             new_f = open(f'{base_dir}/Data/{args.year}/{args.month}/{args.day}/{filename}.csv', 'a')    #Create new file if pattern found --> New module
@@ -41,6 +42,7 @@ with open(f'{base_dir}/tmp.csv') as f:    #Read file line by line
 
         elif (new_f != None):
             cleaned_line = to_values(line)
+
             new_f.write(cleaned_line)
 if new_f != None:
     new_f.close()

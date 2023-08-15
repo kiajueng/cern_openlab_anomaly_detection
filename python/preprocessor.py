@@ -43,6 +43,9 @@ class preprocessor_pbeast:
         for pattern in self.patterns:
             for files in glob.glob(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/{pattern}"):
                 dfs.append(pd.read_hdf(files))
+        if (not os.path.isfile(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/DF_HLTSV_Events.h5")) or (len(dfs) == 0):
+            print(f"No Trigger rates for {self.day}.{self.month}.{self.year}")
+            return None,None
         L1 = pd.read_hdf(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/DF_HLTSV_Events.h5")
         return L1,dfs
 
@@ -59,7 +62,7 @@ class preprocessor_pbeast:
             interval["Date_Time"] = interval["Date_Time"].str.split(" - ").str[1]
             df_new = pd.concat([df,interval])
         df_new['Date_Time'] = df_new['Date_Time'].str.split(' - ').str[0]
-        df_new['Date_Time'] = pd.to_datetime(df_new['Date_Time'], format='%Y-%B-%d %H:%M:%S.%f').dt.round('1s')                                                                                          
+        df_new['Date_Time'] = pd.to_datetime(df_new['Date_Time'], format='%Y-%b-%d %H:%M:%S.%f').dt.round('1s')                                                                                          
         # first resampling to fill periods with " - " with actual values                                                                                                                         
         df_new = df_new.set_index('Date_Time')                                                                                                                                                           
         df_new = df_new.resample(freq).ffill().bfill()
@@ -102,6 +105,9 @@ class preprocessor_pbeast:
     def __run(self):
         L1,dfs = self.__read_csv()
         
+        if (type(L1) == type(None)) or (type(dfs) == type(None)):
+            return None 
+
         if not os.path.isdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data"):
             os.mkdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data")
 
@@ -133,7 +139,6 @@ class preprocessor_pbeast:
             self.__save(joined_df,column)
         self.__save(L1,L1.columns[1])
 
-cleaned_data = pd.DataFrame()
 while(args.start_year <= args.end_year):
     while(args.start_month <= 12):
         while(args.start_day <= calendar.monthrange(args.start_year, args.start_month)[1]):
@@ -146,6 +151,7 @@ while(args.start_year <= args.end_year):
                                 data_freq=args.data_frequency)  
             args.start_day += 1
         args.start_month += 1
+        args.start_day = 1
         if (args.start_year == args.end_year and args.start_month > args.end_month):
             break
     args.start_year += 1
