@@ -13,9 +13,12 @@ parser.add_argument('-sy', '--start_year', type = int, required=True)
 parser.add_argument('-ed', '--end_day', type = int, required=True)
 parser.add_argument('-em', '--end_month', type = int, required=True)
 parser.add_argument('-ey', '--end_year', type = int, required=True)
+parser.add_argument('--L1_drop', default=True, action='store_false', help='Bool type')
 parser.add_argument('-p', '--patterns', action = 'append', required=True, help='Pattern to load from files')
 parser.add_argument('-f', '--data_frequency', type = str, help='data publishing frequency', required=True)
 args = parser.parse_args()
+
+print(args.L1_drop)
 
 def month_numeric_switch(val, option = "to_numeric"):
     month_dict = {1:"Jan", 2:"Feb", 3:"Mar", 4:"Apr", 5:"May", 6:"Jun", 7:"Jul", 8:"Aug", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dez"}
@@ -30,11 +33,12 @@ def month_numeric_switch(val, option = "to_numeric"):
 
 class preprocessor_pbeast:
 
-    def __init__(self, day, month, year, patterns=[],data_freq="6S"):
+    def __init__(self,day, month, year, patterns=[],data_freq="6S",L1_drop=True):
         self.patterns = patterns
         self.day = day
         self.month = month
         self.year = year
+        self.L1_drop = L1_drop
         self.data_freq = data_freq
         self.__run()
 
@@ -43,28 +47,43 @@ class preprocessor_pbeast:
         for pattern in self.patterns:
             for files in glob.glob(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/{pattern}"):
                 dfs.append(pd.read_hdf(files))
-        if (not os.path.isfile(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/DF_HLTSV_Events.h5")) or (len(dfs) == 0):
-            print(f"No Trigger rates for {self.day}.{self.month}.{self.year}")
-            return None,None
-        L1 = pd.read_hdf(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/DF_HLTSV_Events.h5")
-        return L1,dfs
+        if self.L1_drop:
+            if (not os.path.isfile(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/DF_HLTSV_Events.h5")) or (len(dfs) == 0):
+                print(f"No Trigger rates or {self.patterns} File for {self.day}.{self.month}.{self.year}")
+                return None,None
+            L1 = pd.read_hdf(f"{os.environ.get('BASE_DIR')}/Data/{self.year}/{self.month}/{self.day}/DF_HLTSV_Events.h5")
+            return L1,dfs
+
+        if len(dfs) == 0:
+            print(f"No {self.patterns} Files for {self.day}.{self.month}.{self.year}")
+            return None
+        return dfs
 
 
     def __resample(self,df,freq):
         #Treat the intervals
         df_new = df.copy()
+        
+        #Check if there is intervall at the end -> If yes turn interval into start point and end point separate
+        last_interval_idx = -1000
+        last_idx = df.index[-1]
 
         if len(df.loc[df['Date_Time'].str.contains(" - ")].index) > 0: 
             last_interval_idx = df.loc[df['Date_Time'].str.contains(" - ")].index[-1]
-            last_idx = df.index[-1]
+
         if last_interval_idx == last_idx:
             interval = df.iloc[[last_interval_idx]].copy().rename(index={last_interval_idx:(last_interval_idx +1)})
             interval["Date_Time"] = interval["Date_Time"].str.split(" - ").str[1]
             df_new = pd.concat([df,interval])
+
         df_new['Date_Time'] = df_new['Date_Time'].str.split(' - ').str[0]
-        df_new['Date_Time'] = pd.to_datetime(df_new['Date_Time'], format='%Y-%b-%d %H:%M:%S.%f').dt.round('1s')                                                                                          
+        df_new['Date_Time'] = pd.to_datetime(df_new['Date_Time'], format='%Y-%b-%d %H:%M:%S.%f').dt.round('1s')
+        
+        #Delete duplicates
+        df_new.drop_duplicates(subset=['Date_Time'],inplace=True)
+
         # first resampling to fill periods with " - " with actual values                                                                                                                         
-        df_new = df_new.set_index('Date_Time')                                                                                                                                                           
+        df_new = df_new.set_index('Date_Time')
         df_new = df_new.resample(freq).ffill().bfill()
         df_new.reset_index(inplace=True)
         return df_new
@@ -72,11 +91,11 @@ class preprocessor_pbeast:
     def __join(self,dfs):
         for i in range(len(dfs)):
             dfs[i]=dfs[i].set_index("Date_Time")
-        joined_df = pd.concat(dfs,axis=1,join="outer").sort_index().reset_index()
+        joined_df = pd.concat(dfs,axis=1,join="outer").resample(self.data_freq).ffill().bfill().sort_index().reset_index()
         return joined_df
         
     def __drop_L1(self,df,L1):
-
+        
         # which events to remove                                                                                                                                                                 
         condition = L1['DF.HLTSV.Events'] <= 1049                                                                                                                                                 
         drop_times = L1.loc[condition, "Date_Time"]
@@ -85,7 +104,7 @@ class preprocessor_pbeast:
         rows_to_remove_indices = []                                                                                                                                                              
         for given_timestamp in drop_times:                                                                                                                                                          
             matching_rows = df.loc[(df['Date_Time'] >= given_timestamp - pd.Timedelta(seconds=10)) &                                                                                           
-                                    (df['Date_Time'] <= given_timestamp + pd.Timedelta(seconds=10))]                                                                                         
+                                   (df['Date_Time'] <= given_timestamp + pd.Timedelta(seconds=10))]                                                                                         
             rows_to_remove_indices.extend(matching_rows.index)                                                                                                                                   
         df = df.drop(rows_to_remove_indices)
 
@@ -93,20 +112,29 @@ class preprocessor_pbeast:
         df = df.set_index('Date_Time')                                                                                                                                                         
         df = df.resample(self.data_freq).ffill()                                                                                                                                                         
         df = df.rename_axis('Date_Time').reset_index()
+        
+        return df
+
+    def __one_day_keeper(self,df):
         start_day = datetime(self.year, month_numeric_switch(self.month, option = "to_numeric"), self.day)
         end_day = start_day + timedelta(days=1)
         df = df[(df["Date_Time"] >= start_day) & (df["Date_Time"] < end_day)].reset_index(drop=True)
-        return df
+        
+        return df 
 
     def __save(self,data,column):
         name = column.replace(".","_").replace("/","_")
         data[["Date_Time",column]].to_hdf(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}/{self.day}/{name}.h5", key=f"{name}", mode="w")
             
     def __run(self):
-        L1,dfs = self.__read_csv()
-        
-        if (type(L1) == type(None)) or (type(dfs) == type(None)):
-            return None 
+        if self.L1_drop:
+            L1,dfs = self.__read_csv()
+            if (type(L1) == type(None)) or (type(dfs) == type(None)):
+                return None
+        else:
+            dfs = self.__read_csv()
+            if type(dfs) == type(None):
+                return None
 
         if not os.path.isdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data"):
             os.mkdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data")
@@ -121,7 +149,8 @@ class preprocessor_pbeast:
             os.mkdir(f"{os.environ.get('BASE_DIR')}/Cleaned_Data/{self.year}/{self.month}/{self.day}")
 
         #First resample the data
-        L1 = self.__resample(L1,"5S")
+        if self.L1_drop:
+            L1 = self.__resample(L1,"5S")
         for i in range(len(dfs)):
             dfs[i] = self.__resample(dfs[i],self.data_freq)
 
@@ -130,24 +159,27 @@ class preprocessor_pbeast:
             joined_df = self.__join(dfs)
         else:
             joined_df = dfs[0]
-        joined_df = self.__drop_L1(joined_df,L1)
+        if self.L1_drop:
+            joined_df = self.__drop_L1(joined_df,L1)
+        joined_df = self.__one_day_keeper(joined_df)
 
         #Save the cleaned data
         columns = joined_df.columns
         columns = columns[columns != "Date_Time"]    #Remove DateTime column
         for column in columns:
             self.__save(joined_df,column)
-        self.__save(L1,L1.columns[1])
 
 while(args.start_year <= args.end_year):
     while(args.start_month <= 12):
         while(args.start_day <= calendar.monthrange(args.start_year, args.start_month)[1]):
             if (args.start_year == args.end_year and args.start_month == args.start_month and args.start_day > args.end_day):
                 break
+            print(args.start_day,".",args.start_month,".",args.start_year)
             preprocessor_pbeast(day=args.start_day,
                                 month=month_numeric_switch(args.start_month, option = "to_month"),
                                 year=args.start_year,
                                 patterns=args.patterns,
+                                L1_drop=args.L1_drop,
                                 data_freq=args.data_frequency)  
             args.start_day += 1
         args.start_month += 1
